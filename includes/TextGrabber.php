@@ -180,7 +180,6 @@ abstract class TextGrabber extends ExternalWikiGrabber {
 		$actorNormalization = MediaWikiServices::getInstance()->getActorNormalization();
 		if ( $arRow &&
 			$arRow->ar_timestamp === $rev->getTimestamp() &&
-			$arRow->ar_sha1 === $rev->getSha1() &&
 			(int)$arRow->ar_actor === $actorNormalization->findActorId( $rev->getUser(), $this->dbw )
 		) {
 			# Already in database
@@ -196,8 +195,8 @@ abstract class TextGrabber extends ExternalWikiGrabber {
 				__METHOD__
 			);
 		} elseif ( $arRow ) {
-			$this->output( sprintf( "Archived: %s, %s, %s\n", $arRow->ar_timestamp, $arRow->ar_sha1, $arRow->ar_actor ) );
-			$this->output( sprintf( "New: %s, %s, %s\n", $rev->getTimestamp(), $rev->getSha1(), $actorNormalization->findActorId( $rev->getUser(), $this->dbw ) ) );
+			$this->output( sprintf( "Archived: %s, %s, %s\n", $arRow->ar_timestamp, $arRow->ar_actor ) );
+			$this->output( sprintf( "New: %s, %s, %s\n", $rev->getTimestamp(), $actorNormalization->findActorId( $rev->getUser(), $this->dbw ) ) );
 		}
 		$this->revisionStore->insertRevisionOn( $rev, $this->dbw );
 
@@ -271,7 +270,6 @@ abstract class TextGrabber extends ExternalWikiGrabber {
 			'ar_rev_id' => $revisionId,
 			'ar_deleted' => $revdeleted,
 			'ar_len' => strlen( $text ),
-			'ar_sha1' => SlotRecord::base36Sha1( $text ),
 			#'ar_page_id' => NULL, # Not required and unreliable from api
 			'ar_parent_id' => $parentID,
 		] + $commentFields;
@@ -292,7 +290,6 @@ abstract class TextGrabber extends ExternalWikiGrabber {
 		# From RevisionStore::insertContentRowOn()
 		$contentRow = [
 			'content_size' => $slot->getSize(),
-			'content_sha1' => $slot->getSha1(),
 			'content_model' => $this->contentModelStore->acquireId( $slot->getModel() ),
 			'content_address' => $blobAddress,
 		];
@@ -475,7 +472,6 @@ abstract class TextGrabber extends ExternalWikiGrabber {
 			$insertFields['ar_deleted'] = $row->rev_deleted;
 			$insertFields['ar_len'] = $row->rev_len;
 			$insertFields['ar_parent_id'] = $row->rev_parent_id;
-			$insertFields['ar_sha1'] = $row->rev_sha1;
 
 			$comment = $this->commentStore->getComment( 'rev_comment', $row );
 			$insertFields = array_merge(
