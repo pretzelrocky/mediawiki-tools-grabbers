@@ -284,7 +284,7 @@ abstract class ExternalWikiGrabber extends Maintenance {
 		} else {
 			if ( $user->isRegistered() ) {
 				// If user exists, but GUM didn't know about it, then we have a name conflict.
-				$suffix = '@' . $this->getOption( 'actor-conflict-suffix', $this->platform ?: 'conflict' );
+				$suffix = '@' . ( $this->platform ?: 'conflict' );
 				$this->output( "Notice: The user name $name is already in use, using $name$suffix for ID $id instead.\n" );
 				$name = $name . $suffix;
 				$user = $this->userFactory->newFromName( $name );
