@@ -34,6 +34,11 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 	 */
 	protected $mimeAnalyzer;
 
+	/**
+	 * @var array
+	 */
+	protected array $defaultHeaders = [];
+
 	public function __construct() {
 		parent::__construct();
 		$this->addOption( 'ignore-sha', 'Ignore SHA-1 checksum mismatches. May be required for CDN hosts that do image optimisations.' );
@@ -45,6 +50,10 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 		$services = MediaWikiServices::getInstance();
 		$this->localRepo = $services->getRepoGroup()->getLocalRepo();
 		$this->mimeAnalyzer = $services->getMimeAnalyzer();
+
+		if ( $this->isFandom ) {
+			$this->defaultHeaders['Referer'] = 'https://fandom.com';
+		}
 	}
 
 	/**
@@ -626,8 +635,8 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 				if ( $status->isOK() ) {
 					$toRemove[] = $status->getValue();
 				} else {
-					$this->output( "Error when trying to download $name:\n" );
-					$this->error( $status );
+					$formattedErrors = $this->formatStatusErrors( $status );
+					$this->error( "Error when trying to download $name: " . $formattedErrors );
 				}
 			}
 			$filesToDownload = array_filter(
@@ -678,6 +687,7 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 	protected function downloadFiles( array $files, bool $enableCacheBuster = true ): array {
 		$client = $this->getServiceContainer()->getHttpRequestFactory()->createMultiClient( [
 			'reqTimeout' => 90,
+			'headers' => $this->defaultHeaders
 		] );
 
 		$streams = [];
@@ -718,18 +728,22 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 			];
 		}
 
-		$responses = $client->runMulti( $requests );
+		$executedRequests = $client->runMulti( $requests );
 
-		foreach ( $responses as $i => $response ) {
+		foreach ( $executedRequests as $i => $request ) {
+			$response = $request['response'];
 			$options = $files[$i];
 			$fileUrl = $options['fileUrl'];
 			$status = StatusValue::newGood( $options['targetTempFile'] );
 
-			if ( isset( $response['error'] ) ) {
+			if ( $response['error'] ) {
 				$status->fatal( $response['error'] );
 			}
-			if ( isset( $response['reason'] ) ) {
+			if ( $response['reason'] ) {
 				$status->fatal( $response['reason'] );
+			}
+			if ( $response['code'] !== 200 ) {
+				$status->fatal( new RawMessage( 'HTTP status ' . $response['code'] ) );
 			}
 
 			if ( !$status->isOK() ) {
@@ -778,10 +792,14 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 			->create( $fileurl, [
 				'timeout' => 90,
 				'sink' => new LazyOpenStream( $targetTempFile, 'w' ),
+				'headers' => $this->defaultHeaders
 			], __METHOD__ );
 		$this->setRelevantAcceptHeader( $req, $relatedFileName );
 		$status = $req->execute();
 		if ( $status->isOK() ) {
+			if ( $req->getStatus() !== 200 ) {
+				return Status::newFatal( new RawMessage( 'HTTP status ' . $req->getStatus() ) );
+			}
 			if ( is_null( $sha1 ) ) {
 				return $status;
 			}
@@ -799,8 +817,8 @@ abstract class FileGrabber extends ExternalWikiGrabber {
 				$status = Status::newFatal( 'FILECORRUPT' ); # Not an existing message but whatever
 			}
 		} else {
-			$this->output( sprintf( " Error when saving contents of URL %s: %s\n",
-				$fileurl, $status->getWikiText() ) );
+			$this->output( sprintf( " Error when saving contents of URL %s (status %s): %s\n",
+				$fileurl, $req->getStatus(), $status->getWikiText() ) );
 		}
 		return $status;
 	}
